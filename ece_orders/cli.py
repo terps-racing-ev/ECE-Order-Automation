@@ -28,24 +28,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     assign = subparsers.add_parser("assign", help="Create requisitions and assign approved orders to them")
     assign.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
-    assign.add_argument("--write", action="store_true", help="Actually create requisitions and patch orders")
 
     generate = subparsers.add_parser("generate", help="Generate PDFs/docs for pending requisitions")
     generate.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
-    generate.add_argument("--write", action="store_true", help="Actually upload files and patch requisitions")
 
     run_all = subparsers.add_parser("run-all", help="Assign orders, then generate pending requisitions in one login")
     run_all.add_argument("--dry-run", action="store_true", help="Preview both steps without writing")
-    run_all.add_argument("--write", action="store_true", help="Actually run both assignment and generation")
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    if getattr(args, "dry_run", False) and getattr(args, "write", False):
-        parser.error("--dry-run and --write cannot be used together")
 
     settings = load_settings()
     client = GraphClient(settings)
@@ -62,7 +56,7 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(item.get("fields", item), indent=2, sort_keys=True))
         return
 
-    dry_run = not args.write
+    dry_run = args.dry_run
     ctx = load_lists_context(client, site_id)
     if args.command == "assign":
         run_assign(client, site_id, ctx, dry_run=dry_run)

@@ -23,9 +23,26 @@ def ensure_folder(client: GraphClient, drive_id: str, parent_path: str, name: st
     return response.json()
 
 
-def ensure_date_folder(client: GraphClient, drive_id: str, parent_path: str) -> dict[str, Any]:
-    """Create or reuse today's output folder, adding a suffix if needed."""
-    base = dt.datetime.now().strftime("%m%d%y")
+def date_folder_name(value: Any) -> str:
+    """Return the MMDDYY SharePoint folder name for a date-like value."""
+    if isinstance(value, dt.datetime):
+        date_value = value.date()
+    elif isinstance(value, dt.date):
+        date_value = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("Date Created is empty")
+        try:
+            date_value = dt.date.fromisoformat(text[:10])
+        except ValueError as exc:
+            raise ValueError(f"Date Created is not an ISO date: {value!r}") from exc
+    return date_value.strftime("%m%d%y")
+
+
+def ensure_date_folder(client: GraphClient, drive_id: str, parent_path: str, date_created: Any) -> dict[str, Any]:
+    """Create or reuse the output folder for a requisition's Date Created value."""
+    base = date_folder_name(date_created)
     for attempt in range(10):
         name = base if attempt == 0 else f"{base} {attempt}"
         try:

@@ -1,78 +1,101 @@
 # Codebase Guide
 
-This package automates the ECE order workflow against SharePoint Lists through Microsoft Graph. It has two business steps: assign approved order items to requisition list items, then generate/upload the PDF and links document for pending requisitions.
+This project is a mostly sequential pipeline. The normal command is:
 
-## Runtime Flow
+```powershell
+python -m ece_orders run-all
+```
 
-`python -m ece_orders` enters through `ece_orders/__main__.py`, which calls `ece_orders.cli.main`.
+That runs assignment first, then generation, using the same Microsoft Graph login.
 
-The CLI does the shared setup once:
+## Start Of The Program
 
-1. Load `.env` and defaults with `config.load_settings`.
-2. Authenticate with `GraphClient.login_device_code`.
-3. Resolve the SharePoint site with `graph.resolve_site`.
-4. Resolve list IDs and column maps with `data.load_lists_context`.
+Execution starts in `ece_orders/__main__.py`, which immediately calls `ece_orders.cli.main()`.
 
-Commands:
+`cli.main()` does the shared setup for every command:
 
-- `inspect-schema`: prints display names, internal names, types, lookup targets, and read-only flags for the three business lists.
-- `read-item`: prints raw expanded Graph `fields` for one list item.
-- `assign`: creates requisition list items from chief-approved unassigned order items.
-- `generate`: creates PDFs/docs for requisitions marked `Pending Creation`.
-- `run-all`: runs `assign` and then `generate` in one authenticated session.
+1. `config.load_settings()` reads `.env`, checks `CLIENT_ID` and `TENANT_ID`, and loads defaults like the SharePoint site and output folder.
+2. `GraphClient(settings)` creates one reusable HTTP session for Microsoft Graph.
+3. `client.login_device_code()` shows the Microsoft sign-in prompt and stores the Graph token on the session.
+4. `graph.resolve_site()` resolves the configured SharePoint site and returns the site ID.
+5. For write commands, `data.load_lists_context()` resolves the three SharePoint lists and builds column maps.
 
-## Important Modules
+The column maps are important: the code asks for columns by display name, then uses the resolved internal names for Graph reads and writes.
 
-`ece_orders.config`
+## `run-all`
 
-- Defines list display names, statuses, Graph scope, output folder defaults, and `Settings`.
-- `load_settings()` is the only place that reads `.env`.
+`run-all` is just the two business passes back to back:
 
-`ece_orders.graph`
+```python
+run_assign(client, site_id, ctx, dry_run=dry_run)
+run_generate(client, site_id, ctx, settings, dry_run=dry_run)
+```
 
-- `GraphClient` wraps `requests.Session`, MSAL device-code auth, retry handling, and basic `get/post/patch/put_bytes` helpers.
-- `resolve_site()` returns the configured SharePoint site object.
-- `get_default_drive_id()` finds the document library used for generated uploads.
+Because both calls receive the same `GraphClient`, the user only signs in once.
 
-`ece_orders.sharepoint`
+## Assignment Pass
 
-- `SharePointList` and `ColumnMap` hold list metadata.
-- `ColumnMap.internal("Display Name")` resolves a display name to the internal field name Graph needs.
-- `ColumnMap.lookup_id("Vendor")` returns lookup ID fields like `VendorLookupId`.
-- `iter_items()`, `create_item()`, and `patch_item_fields()` are the generic list item helpers.
-- `patch_url_text_fields()` writes generated file URLs to text columns on `ECE Requisitions`.
+The assignment pass starts in `assign.run_assign()`.
 
-`ece_orders.data`
+First, it loads vendor reference data:
 
-- `ListsContext` bundles the three resolved lists and their column maps.
-- `load_vendors()` loads approved vendors by normalized name for fallback matching.
-- `load_vendors_by_id()` loads approved vendors by SharePoint item ID, which is the normal lookup-column path.
+1. `data.load_vendors()` reads `ECE Approved Vendors` and builds a name-keyed vendor map.
+2. `data.load_vendors_by_id()` builds an ID-keyed vendor map, which is the normal path because order vendors are lookup fields.
 
-`ece_orders.assign`
+Then it calls `assign.collect_assignable_orders()`.
 
-- `collect_assignable_orders()` reads `ECE Order Form` items where `Chief Approved` is true and `Req Form` is empty.
-- `run_assign()` groups valid orders by approved-vendor lookup, chunks them by 10, creates `ECE Requisitions` items, and writes each order's `Req Form` lookup.
+`collect_assignable_orders()` loops through `ECE Order Form` items using `sharepoint.iter_items()`. It keeps only rows where:
 
-`ece_orders.generate`
+- `Chief Approved` is true.
+- `Req Form` is empty.
+- `Vendor` exists as either a lookup ID or fallback display value.
 
-- `collect_pending_requisitions()` finds requisitions with status `Pending Creation`.
-- `collect_orders_for_req()` finds order items whose `Req Form` lookup points at a requisition.
-- `run_generate()` creates the filled PDF, builds the links docx, uploads both files, writes their URLs to text fields, and moves the requisition to `Pending Advisor Approval`.
+Back in `run_assign()`, each order is matched to an approved vendor. Lookup ID matching is preferred; name matching only exists as a fallback for messy data.
 
-`ece_orders.pdf`
+The valid orders are grouped by vendor and chunked by `MAX_ROWS_PER_PDF`, currently 10. For each chunk, `run_assign()` creates one `ECE Requisitions` item with `sharepoint.create_item()`. It writes:
 
-- `fill_order_pdf()` fills `Blank Order.pdf` using `pdfrw`.
-- The PDF description field uses `ECE Order Form.Item`, not `Notes`.
+- `Title`: internal requisition ID, like `Digikey 062826 A`
+- `Vendor`: lookup ID to `ECE Approved Vendors`
+- `Requisition Status`: `Pending Creation`
+- `Date Created`: today
 
-`ece_orders.documents`
+After creating the requisition, it patches each order's `Req Form` lookup with `sharepoint.patch_item_fields()`.
 
-- `build_links_docx()` creates a Word document containing clickable purchase links.
-- `extract_url()` accepts either text URLs or SharePoint/Graph URL objects.
+## Generation Pass
 
-`ece_orders.storage`
+The generation pass starts in `generate.run_generate()`.
 
-- `ensure_date_folder()` creates/reuses the SharePoint output folder for today.
-- `upload_small()` uploads generated PDFs/docx files with Graph's simple upload endpoint.
+First, it checks that `Blank Order.pdf` exists. Then it calls `generate.collect_pending_requisitions()`, which reads `ECE Requisitions` and keeps only items whose `Requisition Status` is `Pending Creation`.
+
+For each pending requisition, `run_generate()` calls `generate.collect_orders_for_req()`.
+
+`collect_orders_for_req()` scans `ECE Order Form` and keeps order items whose `Req FormLookupId` matches the requisition item ID. It extracts the values needed for the PDF and links document:
+
+- `Item`
+- `Part Number`
+- `Vendor`
+- `Link`
+- `Unit Cost`
+- `Quantity`
+- `Special Instructions`
+
+Then `run_generate()` resolves vendor address/phone/website data from `ECE Approved Vendors`.
+
+For each valid requisition plan, the actual file work happens in a temporary local folder:
+
+1. `pdf.fill_order_pdf()` fills `Blank Order.pdf`.
+2. `documents.build_links_docx()` creates the Word links document.
+3. `graph.get_default_drive_id()` finds the SharePoint document library.
+4. `storage.ensure_date_folder()` creates or reuses the output folder named from the requisition's `Date Created` value.
+5. `storage.upload_small()` uploads the generated PDF and docx.
+6. `sharepoint.patch_url_text_fields()` writes the uploaded file URLs into the requisition text fields.
+7. `sharepoint.patch_item_fields()` writes `/Shared Documents/...` paths and changes `Requisition Status` to `Pending Advisor Approval`.
+
+## Diagnostics
+
+`inspect-schema` calls `sharepoint.print_schema()`. It prints each list's display names, internal names, types, lookup targets, hidden flags, and read-only flags.
+
+`read-item` calls `sharepoint.get_item()` and prints the raw expanded Graph `fields` JSON for one list item. This is useful when SharePoint returns a surprising field shape.
 
 ## Field Rules
 
@@ -82,12 +105,16 @@ Important expectations:
 
 - `ECE Order Form.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Order Form.Req Form` is a lookup to `ECE Requisitions`.
+- `ECE Order Form.Link` is a long text column. The links document extracts the first URL from it.
+- `ECE Order Form.Special Instructions` is a long text column. The PDF joins item instructions with `; ` and wraps them across the three special-instruction fields.
 - `ECE Requisitions.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Requisitions.Requisition Form` is a text column containing the uploaded PDF URL.
 - `ECE Requisitions.Links Document` is a text column containing the uploaded docx URL.
+- `ECE Requisitions.Requisition Form Path` is a text column containing the relative PDF path.
+- `ECE Requisitions.Links Document Path` is a text column containing the relative docx path.
 
 Use `inspect-schema` after list changes. If a column display name changes, update the matching string in code or restore the SharePoint display name.
 
 ## Safety
 
-`assign`, `generate`, and `run-all` are dry-run by default. Pass `--write` to mutate SharePoint.
+`assign`, `generate`, and `run-all` write by default. Pass `--dry-run` to preview without mutating SharePoint.

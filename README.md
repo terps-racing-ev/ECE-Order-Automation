@@ -5,7 +5,7 @@ Automates the ECE purchasing flow using SharePoint Lists.
 For normal use, run the full workflow:
 
 ```powershell
-python -m ece_orders run-all --write
+python -m ece_orders run-all
 ```
 
 This signs in once, assigns approved orders to requisitions, generates the order PDFs and links documents, uploads them to SharePoint, writes the file URLs back to the requisition list, and moves generated requisitions to `Pending Advisor Approval`.
@@ -26,7 +26,13 @@ This signs in once, assigns approved orders to requisitions, generates the order
    TENANT_ID=
    ```
 
-4. Make sure `Blank Order.pdf` is present in the repo root.
+4. Create `env/jlc_pcb.env` for the JLC PCB links-document password:
+
+   ```text
+   JLC_PCB_PASSWORD=
+   ```
+
+5. Make sure `Blank Order.pdf` is present in the repo root.
 
 The default SharePoint site and output folder are already configured in `.env.example`.
 
@@ -35,19 +41,19 @@ The default SharePoint site and output folder are already configured in `.env.ex
 Run everything:
 
 ```powershell
-python -m ece_orders run-all --write
+python -m ece_orders run-all
 ```
 
 Only assign approved orders to requisitions:
 
 ```powershell
-python -m ece_orders assign --write
+python -m ece_orders assign
 ```
 
 Only generate PDFs/docs for pending requisitions:
 
 ```powershell
-python -m ece_orders generate --write
+python -m ece_orders generate
 ```
 
 ## SharePoint Requirements
@@ -62,9 +68,13 @@ Important column assumptions:
 
 - `ECE Order Form.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Order Form.Req Form` is a lookup to `ECE Requisitions`.
+- `ECE Order Form.Link` is a long text column containing the item URL.
+- `ECE Order Form.Special Instructions` is a long text column.
 - `ECE Requisitions.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Requisitions.Requisition Form` is a text column for the generated PDF URL.
 - `ECE Requisitions.Links Document` is a text column for the generated links document URL.
+- `ECE Requisitions.Requisition Form Path` is a text column for the generated PDF path.
+- `ECE Requisitions.Links Document Path` is a text column for the generated links document path.
 
 ## What It Does
 
@@ -79,8 +89,8 @@ Step 2, generation:
 
 - Finds requisitions with status `Pending Creation`.
 - Generates the PDF order form and links `.docx`.
-- Uploads both files to the configured SharePoint order forms folder.
-- Writes the uploaded file URLs to the requisition item.
+- Uploads both files to the configured SharePoint order forms folder for the requisition's `Date Created`.
+- Writes the uploaded file URLs and `/Shared Documents/...` paths to the requisition item.
 - Changes status to `Pending Advisor Approval`.
 
 ## Admin And Debug Commands
@@ -88,9 +98,9 @@ Step 2, generation:
 Preview commands without writing:
 
 ```powershell
-python -m ece_orders run-all
-python -m ece_orders assign
-python -m ece_orders generate
+python -m ece_orders run-all --dry-run
+python -m ece_orders assign --dry-run
+python -m ece_orders generate --dry-run
 ```
 
 Inspect SharePoint column internal names:

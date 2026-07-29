@@ -1,19 +1,45 @@
 from __future__ import annotations
 
 import io
+import os
+import re
+from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+URL_PATTERN = re.compile(r"(https?://[^\s<>()]+|www\.[^\s<>()]+)", re.IGNORECASE)
+JLC_PCB_VENDOR_KEY = "jlc pcb"
+JLC_PCB_EMAIL = "terpsracingev@gmail.com"
+JLC_PCB_ENV_FILE = Path(__file__).resolve().parent.parent / "env" / "jlc_pcb.env"
+JLC_PCB_PASSWORD_ENV = "JLC_PCB_PASSWORD"
+
 
 def extract_url(value: Any) -> str:
-    """Accept either a plain text URL or Graph's object shape for URL columns."""
-    if isinstance(value, dict):
-        return str(value.get("Url") or value.get("url") or value.get("Description") or value.get("description") or "").strip()
-    return str(value or "").strip()
+    """Extract the first URL from the order form's long-text Link field."""
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text:
+        return ""
+    match = URL_PATTERN.search(text)
+    if match:
+        url = match.group(1).rstrip(".,;:)]}")
+        return f"https://{url}" if url.lower().startswith("www.") else url
+    return text if not re.search(r"\s", text) else ""
+
+
+def normalize_vendor(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().casefold())
+
+
+def jlc_pcb_password() -> str:
+    load_dotenv(JLC_PCB_ENV_FILE, override=False)
+    return os.getenv(JLC_PCB_PASSWORD_ENV, "")
 
 
 def add_hyperlink(paragraph, url: str, text: str) -> None:
@@ -51,6 +77,11 @@ def build_links_docx(vendor: str, items: list[dict]) -> bytes | None:
 
     doc = Document()
     doc.add_paragraph(vendor, style="Title")
+    if normalize_vendor(vendor) == JLC_PCB_VENDOR_KEY:
+        doc.add_paragraph("Login credentials:")
+        doc.add_paragraph(JLC_PCB_EMAIL)
+        doc.add_paragraph(jlc_pcb_password() or f"Missing {JLC_PCB_PASSWORD_ENV}")
+
     for label, link in links:
         paragraph = doc.add_paragraph(style="List Bullet")
         add_hyperlink(paragraph, link, str(label or link))

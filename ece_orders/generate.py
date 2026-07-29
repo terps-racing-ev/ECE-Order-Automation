@@ -10,7 +10,7 @@ from .data import ListsContext, field, load_vendors, load_vendors_by_id, lookup_
 from .documents import build_links_docx
 from .graph import GraphClient, get_default_drive_id
 from .pdf import fill_order_pdf
-from .storage import ensure_date_folder, upload_small
+from .storage import date_folder_name, ensure_date_folder, upload_small
 
 
 def collect_pending_requisitions(client: GraphClient, site_id: str, ctx: ListsContext) -> list[dict[str, Any]]:
@@ -18,6 +18,7 @@ def collect_pending_requisitions(client: GraphClient, site_id: str, ctx: ListsCo
     status_col = ctx.req_cols.internal("Requisition Status")
     title_col = ctx.req_cols.title()
     vendor_col = ctx.req_cols.internal("Vendor")
+    date_created_col = ctx.req_cols.internal("Date Created")
     pending = []
     for item in sp.iter_items(client, site_id, ctx.requisitions.id):
         fields = item.get("fields", {})
@@ -28,6 +29,7 @@ def collect_pending_requisitions(client: GraphClient, site_id: str, ctx: ListsCo
                 "id": item["id"],
                 "internal_req_id": field(fields, title_col, f"Req {item['id']}"),
                 "vendor_lookup_id": lookup_id_value(fields, vendor_col),
+                "date_created": field(fields, date_created_col, ""),
             }
         )
     return pending
@@ -44,8 +46,8 @@ def collect_orders_for_req(client: GraphClient, site_id: str, ctx: ListsContext,
         "link": order_cols.internal("Link"),
         "unit_cost": order_cols.internal("Unit Cost"),
         "quantity": order_cols.internal("Quantity"),
+        "special_instructions": order_cols.internal("Special Instructions"),
     }
-    optional_special = order_cols.columns.get("Special Instructions", {}).get("name")
 
     orders: list[dict[str, Any]] = []
     for item in sp.iter_items(client, site_id, ctx.order_form.id):
@@ -61,10 +63,8 @@ def collect_orders_for_req(client: GraphClient, site_id: str, ctx: ListsContext,
             "link": field(fields, fields_needed["link"], ""),
             "unit_cost": field(fields, fields_needed["unit_cost"], 0),
             "quantity": field(fields, fields_needed["quantity"], 0),
-            "special_instructions": "",
+            "special_instructions": str(field(fields, fields_needed["special_instructions"], "") or "").strip(),
         }
-        if optional_special:
-            order["special_instructions"] = field(fields, optional_special, "")
         orders.append(order)
     return orders
 
@@ -89,6 +89,12 @@ def output_base_name(vendor_name: str, internal_req_id: str) -> str:
         date_suffix = " ".join(parts[-2:])
         return safe_filename(f"{vendor_name} Order - {date_suffix}")
     return safe_filename(f"{vendor_name} Order - {internal_req_id}")
+
+
+def shared_documents_path(parent_path: str, folder_name: str, filename: str) -> str:
+    """Convert a Graph drive-root path into the SharePoint relative path users expect."""
+    clean_parent = parent_path.strip("/")
+    return f"/Shared Documents/{clean_parent}/{folder_name}/{filename}"
 
 
 def run_generate(
@@ -127,12 +133,18 @@ def run_generate(
         if not vendor:
             skipped.append(f"Requisition {req['internal_req_id']} could not resolve its approved vendor lookup")
             continue
+        try:
+            folder_name = date_folder_name(req["date_created"])
+        except ValueError as exc:
+            skipped.append(f"Requisition {req['internal_req_id']} has invalid Date Created: {exc}")
+            continue
         base = output_base_name(vendor["name"], req["internal_req_id"])
         plans.append(
             {
                 "req": req,
                 "vendor": vendor,
                 "orders": orders,
+                "folder_name": folder_name,
                 "pdf_name": f"{base}.pdf",
                 "docx_name": f"{base} Links.docx",
             }
@@ -142,16 +154,21 @@ def run_generate(
         print(f" - Skipped: {message}")
     print(f"\nPlanned generation(s): {len(plans)}")
     for plan in plans:
-        print(f" - {plan['req']['internal_req_id']}: {plan['pdf_name']} and {plan['docx_name']}")
+        print(
+            f" - {plan['req']['internal_req_id']}: "
+            f"{settings.output_parent_sp_path}/{plan['folder_name']}/"
+            f"{plan['pdf_name']} and {plan['docx_name']}"
+        )
 
     if dry_run:
-        print(f"\nDry run: no files uploaded and no requisitions patched. Destination: {settings.output_parent_sp_path}/{{MMDDYY}}")
+        print("\nDry run: no files uploaded and no requisitions patched.")
         return
 
     drive_id = get_default_drive_id(client, site_id)
-    date_folder = ensure_date_folder(client, drive_id, settings.output_parent_sp_path)
     form_col = ctx.req_cols.internal("Requisition Form")
     links_col = ctx.req_cols.internal("Links Document")
+    form_path_col = ctx.req_cols.internal("Requisition Form Path")
+    links_path_col = ctx.req_cols.internal("Links Document Path")
     status_col = ctx.req_cols.internal("Requisition Status")
 
     completed = 0
@@ -160,6 +177,7 @@ def run_generate(
         for plan in plans:
             # Generate locally, upload to the date folder, then store the uploaded
             # SharePoint URLs in plain text columns on the requisition item.
+            date_folder = ensure_date_folder(client, drive_id, settings.output_parent_sp_path, plan["req"]["date_created"])
             pdf_path = tmpdir / plan["pdf_name"]
             fill_order_pdf(
                 settings.blank_order_pdf,
@@ -177,8 +195,12 @@ def run_generate(
                 docx_upload = upload_small(client, drive_id, date_folder["id"], plan["docx_name"], docx_bytes)
 
             links = {form_col: (pdf_upload.get("webUrl", ""), plan["pdf_name"])}
+            paths = {
+                form_path_col: shared_documents_path(settings.output_parent_sp_path, date_folder["name"], plan["pdf_name"]),
+            }
             if docx_upload:
                 links[links_col] = (docx_upload.get("webUrl", ""), plan["docx_name"])
+                paths[links_path_col] = shared_documents_path(settings.output_parent_sp_path, date_folder["name"], plan["docx_name"])
             sp.patch_url_text_fields(
                 client,
                 site_id,
@@ -191,7 +213,7 @@ def run_generate(
                 site_id,
                 ctx.requisitions.id,
                 plan["req"]["id"],
-                {status_col: PENDING_ADVISOR_APPROVAL},
+                {**paths, status_col: PENDING_ADVISOR_APPROVAL},
             )
             completed += 1
 
