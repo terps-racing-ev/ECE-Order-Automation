@@ -83,12 +83,8 @@ def safe_filename(value: str) -> str:
     return cleaned or "Requisition"
 
 
-def output_base_name(vendor_name: str, internal_req_id: str) -> str:
-    parts = str(internal_req_id or "").split()
-    if len(parts) >= 2:
-        date_suffix = " ".join(parts[-2:])
-        return safe_filename(f"{vendor_name} Order - {date_suffix}")
-    return safe_filename(f"{vendor_name} Order - {internal_req_id}")
+def output_base_name(internal_req_id: str) -> str:
+    return safe_filename(str(internal_req_id or ""))
 
 
 def run_generate(
@@ -132,7 +128,7 @@ def run_generate(
         except ValueError as exc:
             skipped.append(f"Requisition {req['internal_req_id']} has invalid Date Created: {exc}")
             continue
-        base = output_base_name(vendor["name"], req["internal_req_id"])
+        base = output_base_name(req["internal_req_id"])
         plans.append(
             {
                 "req": req,
