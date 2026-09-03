@@ -91,12 +91,6 @@ def output_base_name(vendor_name: str, internal_req_id: str) -> str:
     return safe_filename(f"{vendor_name} Order - {internal_req_id}")
 
 
-def shared_documents_path(parent_path: str, folder_name: str, filename: str) -> str:
-    """Convert a Graph drive-root path into the SharePoint relative path users expect."""
-    clean_parent = parent_path.strip("/")
-    return f"/Shared Documents/{clean_parent}/{folder_name}/{filename}"
-
-
 def run_generate(
     client: GraphClient,
     site_id: str,
@@ -167,8 +161,6 @@ def run_generate(
     drive_id = get_default_drive_id(client, site_id)
     form_col = ctx.req_cols.internal("Requisition Form")
     links_col = ctx.req_cols.internal("Links Document")
-    form_path_col = ctx.req_cols.internal("Requisition Form Path")
-    links_path_col = ctx.req_cols.internal("Links Document Path")
     status_col = ctx.req_cols.internal("Requisition Status")
 
     completed = 0
@@ -195,12 +187,8 @@ def run_generate(
                 docx_upload = upload_small(client, drive_id, date_folder["id"], plan["docx_name"], docx_bytes)
 
             links = {form_col: (pdf_upload.get("webUrl", ""), plan["pdf_name"])}
-            paths = {
-                form_path_col: shared_documents_path(settings.output_parent_sp_path, date_folder["name"], plan["pdf_name"]),
-            }
             if docx_upload:
                 links[links_col] = (docx_upload.get("webUrl", ""), plan["docx_name"])
-                paths[links_path_col] = shared_documents_path(settings.output_parent_sp_path, date_folder["name"], plan["docx_name"])
             sp.patch_url_text_fields(
                 client,
                 site_id,
@@ -213,7 +201,7 @@ def run_generate(
                 site_id,
                 ctx.requisitions.id,
                 plan["req"]["id"],
-                {**paths, status_col: PENDING_ADVISOR_APPROVAL},
+                {status_col: PENDING_ADVISOR_APPROVAL},
             )
             completed += 1
 

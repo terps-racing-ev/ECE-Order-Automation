@@ -26,6 +26,12 @@ This signs in once, assigns approved orders to requisitions, generates the order
    TENANT_ID=
    ```
 
+   The Microsoft Graph token cache is stored at `env/sharepoint_token_cache.json` by default after the first successful sign-in. To use a different location, set:
+
+   ```text
+   SHAREPOINT_TOKEN_CACHE_PATH=
+   ```
+
 4. Create `env/jlc_pcb.env` for the JLC PCB links-document password:
 
    ```text
@@ -63,6 +69,7 @@ The script expects these lists:
 - `ECE Order Form`
 - `ECE Requisitions`
 - `ECE Approved Vendors`
+- `ECE Order Batches`
 
 Important column assumptions:
 
@@ -71,10 +78,10 @@ Important column assumptions:
 - `ECE Order Form.Link` is a long text column containing the item URL.
 - `ECE Order Form.Special Instructions` is a long text column.
 - `ECE Requisitions.Vendor` is a lookup to `ECE Approved Vendors`.
+- `ECE Requisitions.Batch` is a lookup to `ECE Order Batches`.
 - `ECE Requisitions.Requisition Form` is a text column for the generated PDF URL.
 - `ECE Requisitions.Links Document` is a text column for the generated links document URL.
-- `ECE Requisitions.Requisition Form Path` is a text column for the generated PDF path.
-- `ECE Requisitions.Links Document Path` is a text column for the generated links document path.
+- `ECE Order Batches.Title` is the batch ID, displayed in SharePoint as `Batch ID`, like `071626`.
 
 ## What It Does
 
@@ -82,7 +89,8 @@ Step 1, assignment:
 
 - Finds order items where `Chief Approved` is true and `Req Form` is empty.
 - Groups them by approved vendor, 10 items per requisition.
-- Creates `ECE Requisitions` items with status `Pending Creation`.
+- Creates or reuses today's `ECE Order Batches` item.
+- Creates `ECE Requisitions` items linked to that batch with status `Pending Creation`.
 - Writes each order item's `Req Form` lookup.
 
 Step 2, generation:
@@ -90,7 +98,7 @@ Step 2, generation:
 - Finds requisitions with status `Pending Creation`.
 - Generates the PDF order form and links `.docx`.
 - Uploads both files to the configured SharePoint order forms folder for the requisition's `Date Created`.
-- Writes the uploaded file URLs and `/Shared Documents/...` paths to the requisition item.
+- Writes the uploaded file URLs to the requisition item.
 - Changes status to `Pending Advisor Approval`.
 
 ## Admin And Debug Commands

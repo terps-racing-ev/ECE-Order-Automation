@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import sharepoint as sp
-from .config import ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST
+from .config import ORDER_BATCHES_LIST, ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST
 from .graph import GraphClient
 
 
@@ -15,23 +15,28 @@ class ListsContext:
     order_form: sp.SharePointList
     requisitions: sp.SharePointList
     vendors: sp.SharePointList
+    order_batches: sp.SharePointList
     order_cols: sp.ColumnMap
     req_cols: sp.ColumnMap
     vendor_cols: sp.ColumnMap
+    batch_cols: sp.ColumnMap
 
 
 def load_lists_context(client: GraphClient, site_id: str) -> ListsContext:
-    """Resolve the three business lists and cache their column definitions."""
+    """Resolve the business lists and cache their column definitions."""
     order_form = sp.get_list_by_display_name(client, site_id, ORDER_FORM_LIST)
     requisitions = sp.get_list_by_display_name(client, site_id, REQUISITIONS_LIST)
     vendors = sp.get_list_by_display_name(client, site_id, VENDORS_LIST)
+    order_batches = sp.get_list_by_display_name(client, site_id, ORDER_BATCHES_LIST)
     return ListsContext(
         order_form=order_form,
         requisitions=requisitions,
         vendors=vendors,
+        order_batches=order_batches,
         order_cols=sp.get_column_map(client, site_id, order_form),
         req_cols=sp.get_column_map(client, site_id, requisitions),
         vendor_cols=sp.get_column_map(client, site_id, vendors),
+        batch_cols=sp.get_column_map(client, site_id, order_batches),
     )
 
 

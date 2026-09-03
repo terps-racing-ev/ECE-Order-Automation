@@ -57,6 +57,24 @@ def collect_assignable_orders(client: GraphClient, site_id: str, ctx: ListsConte
     return orders, skipped
 
 
+def get_or_create_batch(client: GraphClient, site_id: str, ctx: ListsContext, batch_id: str) -> dict[str, Any]:
+    """Return the ECE Order Batches item for this run, creating it if needed."""
+    title_col = ctx.batch_cols.title()
+    matches = []
+    for item in sp.iter_items(client, site_id, ctx.order_batches.id, select_fields=[title_col]):
+        fields = item.get("fields", {})
+        if str(field(fields, title_col, "")).strip() == batch_id:
+            matches.append(item)
+
+    if len(matches) > 1:
+        ids = ", ".join(str(item["id"]) for item in matches)
+        raise RuntimeError(f"Batch ID '{batch_id}' matched multiple ECE Order Batches items: {ids}")
+    if matches:
+        return matches[0]
+
+    return sp.create_item(client, site_id, ctx.order_batches.id, {title_col: batch_id})
+
+
 def run_assign(client: GraphClient, site_id: str, ctx: ListsContext, dry_run: bool) -> None:
     """Create requisitions and write their lookup IDs back to order items."""
     vendors = load_vendors(client, site_id, ctx)
@@ -104,14 +122,16 @@ def run_assign(client: GraphClient, site_id: str, ctx: ListsContext, dry_run: bo
         print(f" - {req_id}: {len(group)} order(s) for {vendor_name}")
 
     if dry_run:
-        print("\nDry run: no requisitions created and no orders patched.")
+        print(f"\nDry run: batch {today_id} was not created or linked, no requisitions created, and no orders patched.")
         return
 
     title_col = ctx.req_cols.title()
     req_vendor_lookup = ctx.req_cols.lookup_id("Vendor")
+    req_batch_lookup = ctx.req_cols.lookup_id("Batch")
     status_col = ctx.req_cols.internal("Requisition Status")
     date_col = ctx.req_cols.internal("Date Created")
     order_req_lookup = ctx.order_cols.lookup_id("Req Form")
+    batch_id = get_or_create_batch(client, site_id, ctx, today_id)["id"] if planned else ""
 
     created = 0
     patched_orders = 0
@@ -125,6 +145,7 @@ def run_assign(client: GraphClient, site_id: str, ctx: ListsContext, dry_run: bo
             {
                 title_col: req_id,
                 req_vendor_lookup: group[0]["vendor_lookup_id"],
+                req_batch_lookup: batch_id,
                 status_col: PENDING_CREATION,
                 date_col: today_date,
             },

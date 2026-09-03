@@ -4,7 +4,7 @@ import argparse
 import json
 
 from .assign import run_assign
-from .config import ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST, load_settings
+from .config import ORDER_BATCHES_LIST, ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST, load_settings
 from .data import load_lists_context
 from .generate import run_generate
 from .graph import GraphClient, resolve_site
@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> None:
     site_id = site["id"]
 
     if args.command == "inspect-schema":
-        print_schema(client, site_id, [ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST])
+        print_schema(client, site_id, [ORDER_FORM_LIST, REQUISITIONS_LIST, VENDORS_LIST, ORDER_BATCHES_LIST])
         return
     if args.command == "read-item":
         sp_list = get_list_by_display_name(client, site_id, args.list)

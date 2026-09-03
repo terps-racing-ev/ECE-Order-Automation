@@ -13,6 +13,7 @@ SCOPES = ["Sites.Selected"]
 ORDER_FORM_LIST = "ECE Order Form"
 REQUISITIONS_LIST = "ECE Requisitions"
 VENDORS_LIST = "ECE Approved Vendors"
+ORDER_BATCHES_LIST = "ECE Order Batches"
 
 PENDING_CREATION = "Pending Creation"
 PENDING_ADVISOR_APPROVAL = "Pending Advisor Approval"
@@ -28,6 +29,7 @@ class Settings:
     site_path: str
     output_parent_sp_path: str
     blank_order_pdf: Path
+    sharepoint_token_cache_path: Path
 
 
 def load_settings() -> Settings:
@@ -37,11 +39,15 @@ def load_settings() -> Settings:
     if not client_id or not tenant_id:
         raise RuntimeError("Missing CLIENT_ID or TENANT_ID in environment/.env")
 
+    repo_root = Path(__file__).resolve().parent.parent
+    token_cache_path = os.getenv("SHAREPOINT_TOKEN_CACHE_PATH")
+
     return Settings(
         client_id=client_id,
         tenant_id=tenant_id,
         site_hostname=os.getenv("SITE_HOSTNAME", "umd0.sharepoint.com"),
         site_path=os.getenv("SITE_PATH", "/TeamsTerpsRacingEV"),
         output_parent_sp_path=os.getenv("OUTPUT_PARENT_SP_PATH", "/General/_EV26/Finance/ECE/Order Forms"),
-        blank_order_pdf=Path(__file__).resolve().parent.parent / "Blank Order.pdf",
+        blank_order_pdf=repo_root / "Blank Order.pdf",
+        sharepoint_token_cache_path=Path(token_cache_path) if token_cache_path else repo_root / "env/sharepoint_token_cache.json",
     )

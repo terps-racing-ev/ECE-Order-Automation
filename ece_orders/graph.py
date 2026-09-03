@@ -15,23 +15,38 @@ class GraphClient:
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.token_cache = msal.SerializableTokenCache()
+        if self.settings.sharepoint_token_cache_path.exists():
+            self.token_cache.deserialize(self.settings.sharepoint_token_cache_path.read_text())
         self.app = msal.PublicClientApplication(
             client_id=self.settings.client_id,
             authority=f"https://login.microsoftonline.com/{self.settings.tenant_id}",
+            token_cache=self.token_cache,
         )
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
     def login_device_code(self) -> None:
-        flow = self.app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            raise RuntimeError(f"Failed to create device flow: {flow}")
-        print("\n=== Microsoft sign-in ===")
-        print(flow["message"])
-        result = self.app.acquire_token_by_device_flow(flow)
+        accounts = self.app.get_accounts()
+        result = self.app.acquire_token_silent(SCOPES, account=accounts[0]) if accounts else None
+        if not result:
+            flow = self.app.initiate_device_flow(scopes=SCOPES)
+            if "user_code" not in flow:
+                raise RuntimeError(f"Failed to create device flow: {flow}")
+            print("\n=== Microsoft sign-in ===")
+            print(flow["message"])
+            result = self.app.acquire_token_by_device_flow(flow)
         if "access_token" not in result:
             raise RuntimeError(f"Token acquisition failed: {result}")
+        self._save_token_cache()
         self.session.headers["Authorization"] = f"Bearer {result['access_token']}"
+
+    def _save_token_cache(self) -> None:
+        if not self.token_cache.has_state_changed:
+            return
+        cache_path = self.settings.sharepoint_token_cache_path
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(self.token_cache.serialize())
 
     def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
         # Graph occasionally throttles or flakes during workbook/list/file calls.

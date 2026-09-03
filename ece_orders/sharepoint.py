@@ -110,8 +110,8 @@ def iter_items(client: GraphClient, site_id: str, list_id: str, select_fields: l
     expand = "fields"
     if select_fields:
         encoded_fields = ",".join(select_fields)
-        expand = f"fields(select={encoded_fields})"
-    url = f"{GRAPH_BASE}/sites/{site_id}/lists/{list_id}/items?$expand={quote(expand, safe='=(),')}&$top=200"
+        expand = f"fields($select={encoded_fields})"
+    url = f"{GRAPH_BASE}/sites/{site_id}/lists/{list_id}/items?$expand={quote(expand, safe='$=(),')}&$top=200"
     items: list[dict[str, Any]] = []
     while url:
         data = client.get(url)
