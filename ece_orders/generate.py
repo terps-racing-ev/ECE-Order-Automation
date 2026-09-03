@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from . import sharepoint as sp
-from .config import PENDING_ADVISOR_APPROVAL, PENDING_CREATION, Settings
+from .config import PENDING_CREATION, REQ_FORM_CREATED, Settings
 from .data import ListsContext, field, load_vendors, load_vendors_by_id, lookup_id_value, normalize_name
 from .documents import build_links_docx
 from .graph import GraphClient, get_default_drive_id
@@ -201,7 +201,7 @@ def run_generate(
                 site_id,
                 ctx.requisitions.id,
                 plan["req"]["id"],
-                {status_col: PENDING_ADVISOR_APPROVAL},
+                {status_col: REQ_FORM_CREATED},
             )
             completed += 1
 

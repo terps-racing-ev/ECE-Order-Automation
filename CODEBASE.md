@@ -92,7 +92,7 @@ For each valid requisition plan, the actual file work happens in a temporary loc
 4. `storage.ensure_date_folder()` creates or reuses the output folder named from the requisition's `Date Created` value.
 5. `storage.upload_small()` uploads the generated PDF and docx.
 6. `sharepoint.patch_url_text_fields()` writes the uploaded file URLs into the requisition text fields.
-7. `sharepoint.patch_item_fields()` changes `Requisition Status` to `Pending Advisor Approval`.
+7. `sharepoint.patch_item_fields()` changes `Requisition Status` to `Req Form Created`.
 
 ## Diagnostics
 

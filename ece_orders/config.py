@@ -16,7 +16,7 @@ VENDORS_LIST = "ECE Approved Vendors"
 ORDER_BATCHES_LIST = "ECE Order Batches"
 
 PENDING_CREATION = "Pending Creation"
-PENDING_ADVISOR_APPROVAL = "Pending Advisor Approval"
+REQ_FORM_CREATED = "Req Form Created"
 
 MAX_ROWS_PER_PDF = 10
 

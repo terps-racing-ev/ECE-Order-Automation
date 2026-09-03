@@ -8,7 +8,7 @@ For normal use, run the full workflow:
 python -m ece_orders run-all
 ```
 
-This signs in once, assigns approved orders to requisitions, generates the order PDFs and links documents, uploads them to SharePoint, writes the file URLs back to the requisition list, and moves generated requisitions to `Pending Advisor Approval`.
+This signs in once, assigns approved orders to requisitions, generates the order PDFs and links documents, uploads them to SharePoint, writes the file URLs back to the requisition list, and moves generated requisitions to `Req Form Created`.
 
 ## Setup
 
@@ -99,7 +99,7 @@ Step 2, generation:
 - Generates the PDF order form and links `.docx`.
 - Uploads both files to the configured SharePoint order forms folder for the requisition's `Date Created`.
 - Writes the uploaded file URLs to the requisition item.
-- Changes status to `Pending Advisor Approval`.
+- Changes status to `Req Form Created`.
 
 ## Admin And Debug Commands
 
