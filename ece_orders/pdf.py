@@ -115,7 +115,14 @@ def fill_order_pdf(
                         set_val(annot, mapping[name])
                         break
 
-    special = "; ".join(item.get("special_instructions", "").strip() for item in items if item.get("special_instructions"))
+    special_parts = []
+    for item in items:
+        instructions = str(item.get("special_instructions") or "").strip()
+        if not instructions:
+            continue
+        part = str(item.get("part_number") or "").strip()
+        special_parts.append(f"{part}: {instructions}" if part else instructions)
+    special = "; ".join(special_parts)
     special1, special2, special3 = wrap_special(special)
     for page in pdf.pages:
         if not getattr(page, "Annots", None):

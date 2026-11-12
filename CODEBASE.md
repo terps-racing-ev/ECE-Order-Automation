@@ -109,7 +109,7 @@ Important expectations:
 - `ECE Order Form.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Order Form.Req Form` is a lookup to `ECE Requisitions`.
 - `ECE Order Form.Link` is a long text column. The links document extracts the first URL from it.
-- `ECE Order Form.Special Instructions` is a long text column. The PDF joins item instructions with `; ` and wraps them across the three special-instruction fields.
+- `ECE Order Form.Special Instructions` is a long text column. The PDF prefixes each item's instructions with its part number (`PART#: text`), joins them with `; ` and wraps them across the three special-instruction fields.
 - `ECE Requisitions.Vendor` is a lookup to `ECE Approved Vendors`.
 - `ECE Requisitions.Batch` is a lookup to `ECE Order Batches`.
 - `ECE Requisitions.Requisition Form` is a text column containing the uploaded PDF URL.
